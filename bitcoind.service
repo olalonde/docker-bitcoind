@@ -14,6 +14,9 @@ ExecStartPre=-/bin/docker kill bitcoind-testnet bitcoind-ebs bitcoind-elb
 ExecStartPre=-/bin/docker rm bitcoind-testnet bitcoind-ebs bitcoind-elb
 
 # Attach EBS volume
+# TODO: partition volume with mkfs if not already partitioned
+# file -s /dev/xvdg | grep ext4
+# mkfs -t ext4 /dev/xvdg
 ExecStartPre=/bin/bash -c "\
     docker run \
         -d \
@@ -26,6 +29,8 @@ ExecStartPre=/bin/bash -c "\
         abrkn/ebs-sidekick ; \
     sleep 10 ; \
     mkdir -p /bitcoind ; \
+    echo listing blocks; \
+    lsblk ; \
     [ -z $(lsblk | grep -qs ^xvdg )] &&  mount /dev/xvdg /bitcoind \
 "
 
