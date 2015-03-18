@@ -8,25 +8,6 @@ RUN apt-get update && \
     apt-get install -y bitcoind aria2 && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-ENV HOME /bitcoin
-RUN useradd -s /bin/bash -m -d /bitcoin bitcoin
-RUN chown bitcoin:bitcoin -R /bitcoin
-
-ADD ./bin /usr/local/bin
-RUN chmod a+x /usr/local/bin/*
-
-# For some reason, docker.io (0.9.1~dfsg1-2) pkg in Ubuntu 14.04 has permission
-# denied issues when executing /bin/bash from trusted builds.  Building locally
-# works fine (strange).  Using the upstream docker (0.11.1) pkg from
-# http://get.docker.io/ubuntu works fine also and seems simpler.
-USER bitcoin
-
-VOLUME ["/bitcoin"]
-
-#EXPOSE 8332 8333 6881 6882
-
 EXPOSE 8332 8333 18332 18333
 
-WORKDIR /bitcoin
-
-CMD ["bitcoind -server=0 -testnet"]
+CMD ["/usr/bin/bitcoind", "-datadir=/data", "--printtoconsole", "-server=0", "-testnet"]

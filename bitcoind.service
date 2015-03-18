@@ -1,0 +1,64 @@
+[Unit]
+Description=bitcoind
+Requires=docker.service
+
+[Service]
+WorkingDirectory=/root
+TimeoutStartSec=0
+
+# Kill and rm leftover containers
+ExecStartPre=-/bin/docker pull olalond3/bitcoind
+ExecStartPre=-/bin/docker pull abrkn/ebs-sidekick
+ExecStartPre=-/bin/docker pull abrkn/elb-sidekick
+ExecStartPre=-/bin/docker kill bitcoind-testnet bitcoind-ebs bitcoind-elb
+ExecStartPre=-/bin/docker rm bitcoind-testnet bitcoind-ebs bitcoind-elb
+
+# Attach EBS volume
+ExecStartPre=/bin/bash -c "\
+    docker run \
+        -d \
+        --name bitcoind-ebs \
+        --env AWS_ACCESS_KEY_ID=$(etcdctl get /aws_key) \
+        --env AWS_SECRET_ACCESS_KEY=$(etcdctl get /aws_secret) \
+        --env VOLUME_ID=$(etcdctl get /bitcoind_volume_id) \
+        --env DEVICE=/dev/sdg \
+        --env AWS_DEFAULT_REGION=us-east-1 \
+        abrkn/ebs-sidekick ; \
+    sleep 10 ; \
+    mkdir -p /bitcoind ; \
+    [ -z $(lsblk | grep -qs ^xvdg )] &&  mount /dev/xvdg /bitcoind \
+"
+
+# Run bitcoind container
+ExecStart=/bin/docker run \
+    -v /bitcoind:/data \
+    -p 18333:18333 \
+    --name bitcoind-testnet \
+    olalond3/bitcoind \
+    /usr/bin/bitcoind -datadir=/data -testnet --printtoconsole -server=0
+
+# Register to ELB
+ExecStartPost=/bin/bash -c "\
+    docker run \
+        -d \
+        --name bitcoind-elb \
+        --env AWS_ACCESS_KEY_ID=$(etcdctl get /aws_key) \
+        --env AWS_SECRET_ACCESS_KEY=$(etcdctl get /aws_secret) \
+        --env ELB_NAME=bitcoind-testnet \
+        --env AWS_DEFAULT_REGION=us-east-1 \
+        abrkn/elb-sidekick \
+"
+
+# Deregister from ELB
+ExecStop=/bin/docker stop -t 30 bitcoind-elb
+ExecStop=/bin/docker stop -t 60 bitcoind-testnet
+
+# Detach EBS volume
+ExecStopPost=/bin/bash -c "\
+    docker stop bitcoind-testnet ; \
+    umount /bitcoind ; \
+    docker stop bitcoind-ebs \
+"
+
+[Install]
+WantedBy=multi-user.target
